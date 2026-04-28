@@ -1,0 +1,19 @@
+# Python cache and local environments
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Project outputs and generated reports
+outputs/
+
+# Local dataset copies
+data/raw/
+data/processed/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+
+# Local notes or archives
+*.zip
