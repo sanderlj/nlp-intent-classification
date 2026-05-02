@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from src.config import (
+    BPE_MERGE_VALUES,
     CHAR_NGRAM_RANGES,
     LANGUAGES,
     LR_C_VALUES,
@@ -10,8 +11,49 @@ from src.config import (
     RAW_DATA_DIR,
     ensure_directories,
 )
-from src.data_utils import load_language_dataset, summarize_dataset
+from bpe import BPETokenizer
+from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
 from src.experiments import run_part1_baselines
+
+
+def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
+    """Part 2: BPE training and tokenization analysis."""
+    
+    for language, dataset in language_datasets.items():
+        print(f"\n[Part 2] Processing language: {language}")
+        
+        # Build word list from training texts.
+        train_texts = dataset.train.texts
+        word_list = []
+        for text in train_texts:
+            word_list.extend(text.split())
+        
+        print(f"  Unique words in training set: {len(set(word_list))}")
+        
+        # Train separate BPETokenizer for each k in BPE_MERGE_VALUES.
+        tokenizers = {}
+        for k in BPE_MERGE_VALUES:
+            tokenizer = BPETokenizer()
+            tokenizer.train(word_list, num_merges=k)
+            tokenizers[k] = tokenizer
+            print(f"  Trained BPE tokenizer with {k} merges.")
+            
+        # Analyze tokenizations for a few example utterances at k = 100, 300, 500.
+        analysis_k_values = [100, 300, 500]  
+        
+        for k in analysis_k_values:
+            print(f"  Example tokenization with k={k}:")
+            tokenizer = tokenizers[k]
+            for i, text in enumerate(train_texts[:5]):
+                tokens = tokenizer.encode(text)
+                print(f"    Utterance {i}: {tokens}")
+        
+        
+        # Optionally save these outputs to outputs/tokenization_examples/
+        # so they can be copied into the report.
+        #
+        # If this function will be reused in Part 3/4, return tokenizers or
+        # a mapping {language: {k: tokenizer}} instead of printing only.
 
 
 def main() -> None:
@@ -46,6 +88,9 @@ def main() -> None:
                 f"dev={result.dev_accuracy:.4f} | test={result.test_accuracy:.4f} | "
                 f"params={result.hyperparameters}"
             )
+
+        print("\nRunning Part 2 BPE...")
+        run_part2_bpe(language_datasets)
 
 
 if __name__ == "__main__":
