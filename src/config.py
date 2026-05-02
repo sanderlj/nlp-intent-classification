@@ -21,7 +21,7 @@ RANDOM_SEED = 42
 BPE_MERGE_VALUES = [100, 200, 300, 500, 750]
 NB_ALPHA_VALUES = [0.001, 0.01, 0.1, 0.5, 1.0, 5.0]
 LR_C_VALUES = [0.01, 0.1, 0.5, 1.0, 5.0, 10.0]
-CHAR_NGRAM_RANGES = [(1, 1), (2, 3), (2, 4), (3, 5)]
+CHAR_NGRAM_RANGES = [(1, 3), (2, 3), (2, 4), (3, 5)]
 
 
 def ensure_directories() -> None:

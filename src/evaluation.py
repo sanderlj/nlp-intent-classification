@@ -5,11 +5,7 @@ from __future__ import annotations
 from collections import Counter
 from itertools import combinations
 
-from sklearn.metrics import accuracy_score, confusion_matrix
-
-
-def compute_accuracy(y_true: list[str], y_pred: list[str]) -> float:
-    return float(accuracy_score(y_true, y_pred))
+from sklearn.metrics import confusion_matrix
 
 
 def top_confused_pairs(y_true: list[str], y_pred: list[str], top_k: int = 3) -> list[tuple[tuple[str, str], int]]:
