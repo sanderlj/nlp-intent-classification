@@ -10,6 +10,10 @@ from dataclasses import dataclass
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
+from src.data_utils import LanguageDataset
+from bpe import BPETokenizer
+from nb import MultinomialNaiveBayes
+
 from src.features import (
     fit_char_ngram_vocabulary,
     fit_word_unigram_vocabulary,
@@ -175,4 +179,78 @@ def run_part1_baselines(
         char_result = run_char_ngram(language, dataset, ngram_ranges, c_values, random_seed)
         print(f"  Best char n-gram LR: dev acc={char_result.dev_accuracy:.4f}, test acc={char_result.test_accuracy:.4f}")
         results.append(char_result)
+    return results
+
+
+def run_part3_nb(
+    language_datasets: dict[str, LanguageDataset],
+    alpha_values: list[float],
+    k_values: list[int],
+    random_seed: int,
+) -> list[ExperimentResult]:
+    """Run the Part 3 NB experiment for all selected languages."""
+    
+    results: list[ExperimentResult] = []
+    
+    for language, dataset in language_datasets.items():
+        print(f"Running Naive Bayes for {language}...")
+        
+        train_labels = dataset.train.labels
+        dev_labels = dataset.dev.labels
+        test_labels = dataset.test.labels
+        train_texts = dataset.train.texts
+        dev_texts = dataset.dev.texts
+        test_texts = dataset.test.texts
+        
+        word_list = []
+        for text in train_texts:
+            word_list.extend(text.split())
+        
+        best_dev_acc = -1.0
+        best_k = None
+        best_alpha = None
+        
+        for k in k_values:
+            tokenizer = BPETokenizer()
+            print(f"  [NB] Tuning for k={k}...")
+            tokenizer.train(word_list, k)
+            train_docs = [tokenizer.encode(text) for text in train_texts]
+            dev_docs = [tokenizer.encode(text) for text in dev_texts]
+            
+            for alpha in alpha_values:
+                print(f"    [NB] Tuning for alpha={alpha}...")
+                model = MultinomialNaiveBayes(alpha=alpha)
+                model.fit(train_docs, train_labels)
+                dev_pred = model.predict(dev_docs)
+                dev_acc = accuracy_score(dev_labels, dev_pred)  
+                print(f"      [NB] k={k}, alpha={alpha}: dev acc={dev_acc:.4f}")
+                
+                if dev_acc > best_dev_acc:
+                    best_dev_acc = dev_acc
+                    best_k = k
+                    best_alpha = alpha
+        if best_k is None or best_alpha is None:
+            raise ValueError("No valid hyperparameters found. Check if k_values or alpha_values is empty.")
+        print(f"  Best NB hyperparameters for {language}: k={best_k}, alpha={best_alpha}, dev acc={best_dev_acc:.4f}")
+        
+        best_tokenizer = BPETokenizer()
+        best_tokenizer.train(word_list, best_k)
+        best_train_docs = [best_tokenizer.encode(text) for text in train_texts]
+        best_test_docs = [best_tokenizer.encode(text) for text in test_texts]
+        best_model = MultinomialNaiveBayes(alpha=best_alpha)
+        best_model.fit(best_train_docs, train_labels)
+        test_pred = best_model.predict(best_test_docs)
+        test_acc = accuracy_score(test_labels, test_pred)
+        print(f"  Test accuracy for {language}: {test_acc:.4f}")
+        
+        # Return experiment result.
+        results.append(ExperimentResult(
+            language=language,
+            model_name="NB",
+            feature_name="BPE",
+            dev_accuracy=float(best_dev_acc),
+            test_accuracy=float(test_acc),
+            hyperparameters={"k": best_k, "alpha": best_alpha},
+        ))
+
     return results

@@ -6,6 +6,7 @@ from src.config import (
     BPE_MERGE_VALUES,
     CHAR_NGRAM_RANGES,
     LANGUAGES,
+    NB_ALPHA_VALUES,
     LR_C_VALUES,
     RANDOM_SEED,
     RAW_DATA_DIR,
@@ -13,7 +14,7 @@ from src.config import (
 )
 from bpe import BPETokenizer
 from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.experiments import run_part1_baselines
+from src.experiments import run_part1_baselines, run_part3_nb
 
 
 def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
@@ -91,6 +92,14 @@ def main() -> None:
 
         print("\nRunning Part 2 BPE...")
         run_part2_bpe(language_datasets)
+        
+        print("\nRunning Part 3 NB...")
+        run_part3_nb(
+            language_datasets,
+            alpha_values=NB_ALPHA_VALUES,
+            k_values=BPE_MERGE_VALUES,
+            random_seed=RANDOM_SEED   
+        )
 
 
 if __name__ == "__main__":
