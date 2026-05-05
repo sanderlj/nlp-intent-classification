@@ -7,6 +7,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
@@ -260,6 +262,53 @@ def run_part3_nb(
     return results
 
 
+def build_feature_engineering_matrices(train_texts: list[str], other_texts: list[str], train_words: list[str], k: int, feature_name: str) -> tuple[np.ndarray, np.ndarray]:
+    """Helper function to build feature matrices for Part 4 feature engineering."""
+    
+    tokenizer = BPETokenizer()
+    tokenizer.train(train_words, k)
+    train_docs = [tokenizer.encode(text) for text in train_texts]
+    other_docs = [tokenizer.encode(text) for text in other_texts]
+    
+    bpe_vocab: dict[str, int] = {}
+    for doc in train_docs:
+        for token in doc:
+            if token not in bpe_vocab:
+                bpe_vocab[token] = len(bpe_vocab)
+    
+    x_train_bpe = np.zeros((len(train_docs), len(bpe_vocab)), dtype=np.int32)
+    x_other_bpe = np.zeros((len(other_docs), len(bpe_vocab)), dtype=np.int32)
+    
+    for i, doc in enumerate(train_docs):
+        for tok in doc:
+            if tok in bpe_vocab:
+                x_train_bpe[i, bpe_vocab[tok]] += 1
+    for i, doc in enumerate(other_docs):
+        for tok in doc:
+            if tok in bpe_vocab:
+                x_other_bpe[i, bpe_vocab[tok]] += 1
+    
+    train_blocks = [x_train_bpe]
+    other_blocks = [x_other_bpe]
+                    
+    if feature_name in {"bpe_counts_plus_bigrams", "bpe_counts_plus_bigrams_plus_length"}:
+        bigram_vocab = fit_bpe_bigram_vocabulary(train_docs)
+        train_bigram_features = transform_bpe_bigram_counts(train_docs, bigram_vocab)
+        other_bigram_features = transform_bpe_bigram_counts(other_docs, bigram_vocab)
+        train_blocks.append(train_bigram_features)
+        other_blocks.append(other_bigram_features)
+
+    if feature_name in {"bpe_counts_plus_length", "bpe_counts_plus_bigrams_plus_length"}:
+        train_length_features = transform_length_structure_features(train_texts)
+        other_length_features = transform_length_structure_features(other_texts)
+        train_blocks.append(train_length_features)
+        other_blocks.append(other_length_features)
+
+    x_train = concatenate_feature_blocks(train_blocks)
+    x_other = concatenate_feature_blocks(other_blocks)
+        
+    return x_train, x_other
+
 def run_part4_feature_engineering(
     language_datasets: dict[str, LanguageDataset],
     k_values: list[int],
@@ -301,20 +350,59 @@ def run_part4_feature_engineering(
             best_k = None
             best_c = None
 
+            for k in k_values:
+                x_train, x_dev = build_feature_engineering_matrices(train_texts, dev_texts, train_words, k, feature_name)
+                for c_value in c_values:
+                    print(f"    Tuning for k={k}, C={c_value}...")
+                    model = LogisticRegression(
+                        C=c_value,
+                        solver="lbfgs",
+                        max_iter=5000,
+                        random_state=random_seed,
+                    )
+                    model.fit(x_train, train_labels)
+                    dev_pred = model.predict(x_dev)
+                    dev_acc = accuracy_score(dev_labels, dev_pred)
+                    print(f"      dev acc={dev_acc:.4f}")
+                    if dev_acc > best_dev_acc:
+                        best_dev_acc = dev_acc
+                        best_k = k
+                        best_c = c_value
+            print(f"  Best hyperparameters for {language} with feature set {feature_name}: k={best_k}, C={best_c}, dev acc={best_dev_acc:.4f}")
+            if best_k is None or best_c is None:
+                raise ValueError("No valid hyperparameters found. Check if k_values or c_values is empty.")
             
-            # TODO your code here ##
-            # 1) Loop over k_values:
-            #    - Train BPETokenizer on train_words with current k
-            #    - Encode train/dev/test into BPE token docs
-            #    - Build base BPE-count features
-            #    - Conditionally add bigram and/or length feature blocks
-            #      based on feature_name
-            # 2) Loop over c_values:
-            #    - Train LogisticRegression on train features
-            #    - Evaluate on dev
-            #    - Track best (k, C) by dev accuracy
-            # 3) Rebuild best config and evaluate test once
-            # 4) Append ExperimentResult for this feature_name
-            raise NotImplementedError("Implement Part 4 tuning/ablation loop here.")
+            x_train_best, x_test_best = build_feature_engineering_matrices(
+                train_texts,
+                test_texts,
+                train_words,
+                best_k,
+                feature_name
+            )
+            
+            best_model = LogisticRegression(
+                C=best_c,
+                solver="lbfgs",
+                max_iter=2000,
+                random_state=random_seed
+            )
+            
+            best_model.fit(x_train_best, train_labels)
+            test_pred = best_model.predict(x_test_best)
+            test_acc = accuracy_score(test_labels, test_pred)
+            print(
+                f"  [Part4][{language}][{feature_name}] "
+                f"best_k={best_k}, best_C={best_c}, "
+                f"dev={best_dev_acc:.4f}, test={test_acc:.4f}"
+            )
+
+            results.append(ExperimentResult(
+                language=language,
+                model_name="LR",
+                feature_name=feature_name,
+                dev_accuracy=float(best_dev_acc),
+                test_accuracy=float(test_acc),
+                hyperparameters={"k": best_k, "C": best_c},
+            ))
 
     return results

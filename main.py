@@ -98,7 +98,7 @@ def main() -> None:
             language_datasets,
             alpha_values=NB_ALPHA_VALUES,
             k_values=BPE_MERGE_VALUES,
-            random_seed=RANDOM_SEED   
+            random_seed=RANDOM_SEED
         )
         
         print("\nRunning Part 4 Feature Engineering...")

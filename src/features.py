@@ -130,11 +130,12 @@ def transform_bpe_bigram_counts(
 def transform_length_structure_features(texts: Iterable[str]) -> np.ndarray:
     """Create simple length/structure features per utterance.
 
-    Suggested columns:
+    Columns:
     - number of whitespace tokens
     - number of characters
     - average token length
     """
+    
     texts = list(texts)
     length_features = np.zeros((len(texts), 3), dtype=np.float32)
     
@@ -144,9 +145,10 @@ def transform_length_structure_features(texts: Iterable[str]) -> np.ndarray:
         num_chars = len(text)
         avg_token_length = num_chars / num_tokens if num_tokens > 0 else 0.0
         
-        length_features[i, 0] = num_tokens
-        length_features[i, 1] = num_chars
-        length_features[i, 2] = avg_token_length
+        # Scale features to reasonable ranges
+        length_features[i, 0] = num_tokens / 20.0  
+        length_features[i, 1] = num_chars / 200.0  
+        length_features[i, 2] = avg_token_length / 20.0  
     
     return length_features
 
