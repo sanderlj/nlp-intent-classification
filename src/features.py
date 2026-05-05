@@ -89,3 +89,81 @@ def transform_char_ngram_counts(
             if ngram in vocabulary:
                 x[i, vocabulary[ngram]] += 1
     return x
+
+
+def bpe_token_bigrams(tokens: list[str]) -> list[str]:
+    """Create adjacent bigram features from a BPE token sequence."""
+    
+    bigram_tokens = []
+    for i in range(len(tokens) - 1):
+        bigram_tokens.append(f"{tokens[i]}||{tokens[i+1]}")
+        
+    return bigram_tokens
+
+
+def fit_bpe_bigram_vocabulary(train_docs: Iterable[list[str]]) -> dict[str, int]:
+    """Build a BPE-bigram vocabulary from tokenized training documents only."""
+    
+    vocab: dict[str, int] = {}
+    for doc in train_docs:
+        for bigram in bpe_token_bigrams(doc):
+            if bigram not in vocab:
+                vocab[bigram] = len(vocab)
+    return vocab
+
+
+def transform_bpe_bigram_counts(
+    docs: Iterable[list[str]],
+    vocabulary: dict[str, int],
+) -> np.ndarray:
+    
+    """Transform tokenized docs into BPE-bigram count vectors."""
+    docs = list(docs)
+    x = np.zeros((len(docs), len(vocabulary)), dtype=np.int32)
+    
+    for i, doc in enumerate(docs):
+        for bigram in bpe_token_bigrams(doc):
+            if bigram in vocabulary:
+                x[i, vocabulary[bigram]] += 1
+    return x
+
+def transform_length_structure_features(texts: Iterable[str]) -> np.ndarray:
+    """Create simple length/structure features per utterance.
+
+    Columns:
+    - number of whitespace tokens
+    - number of characters
+    - average token length
+    """
+    
+    texts = list(texts)
+    length_features = np.zeros((len(texts), 3), dtype=np.float32)
+    
+    for i, text in enumerate(texts):
+        tokens = whitespace_tokenize(text)
+        num_tokens = len(tokens)
+        num_chars = len(text)
+        avg_token_length = num_chars / num_tokens if num_tokens > 0 else 0.0
+        
+        # Scale features to reasonable ranges
+        length_features[i, 0] = num_tokens / 20.0  
+        length_features[i, 1] = num_chars / 200.0  
+        length_features[i, 2] = avg_token_length / 20.0  
+    
+    return length_features
+
+
+def concatenate_feature_blocks(feature_blocks: list[np.ndarray]) -> np.ndarray:
+    """Concatenate multiple feature matrices column-wise."""
+    
+    if not feature_blocks:
+        raise ValueError("No feature blocks provided for concatenation.")
+
+    for block in feature_blocks:
+        
+        if not isinstance(block, np.ndarray):
+            raise ValueError("All feature blocks must be numpy arrays.") 
+        if not block.shape[0] == feature_blocks[0].shape[0]:
+            raise ValueError("All feature blocks must have the same number of rows.")   
+        
+    return np.hstack(feature_blocks)

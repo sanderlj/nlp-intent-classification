@@ -14,7 +14,7 @@ from src.config import (
 )
 from bpe import BPETokenizer
 from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.experiments import run_part1_baselines, run_part3_nb
+from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering
 
 
 def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
@@ -98,7 +98,15 @@ def main() -> None:
             language_datasets,
             alpha_values=NB_ALPHA_VALUES,
             k_values=BPE_MERGE_VALUES,
-            random_seed=RANDOM_SEED   
+            random_seed=RANDOM_SEED
+        )
+        
+        print("\nRunning Part 4 Feature Engineering...")
+        run_part4_feature_engineering(
+            language_datasets,
+            k_values=BPE_MERGE_VALUES,
+            c_values=LR_C_VALUES,
+            random_seed=RANDOM_SEED
         )
 
 
