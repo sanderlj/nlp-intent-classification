@@ -15,8 +15,12 @@ from bpe import BPETokenizer
 from nb import MultinomialNaiveBayes
 
 from src.features import (
+    concatenate_feature_blocks,
+    fit_bpe_bigram_vocabulary,
     fit_char_ngram_vocabulary,
     fit_word_unigram_vocabulary,
+    transform_bpe_bigram_counts,
+    transform_length_structure_features,
     transform_char_ngram_counts,
     transform_word_unigram_counts,
 )
@@ -252,5 +256,65 @@ def run_part3_nb(
             test_accuracy=float(test_acc),
             hyperparameters={"k": best_k, "alpha": best_alpha},
         ))
+
+    return results
+
+
+def run_part4_feature_engineering(
+    language_datasets: dict[str, LanguageDataset],
+    k_values: list[int],
+    c_values: list[float],
+    random_seed: int,
+) -> list[ExperimentResult]:
+    """Run Part 4 LR + BPE feature engineering with ablations.
+
+    Ablation plan:
+    1) BPE counts (base)
+    2) BPE + BPE bigrams
+    3) BPE + length_structure_features
+    4) BPE + both features
+    """
+    results: list[ExperimentResult] = []
+    feature_sets = [
+        "bpe_counts",
+        "bpe_counts_plus_bigrams",
+        "bpe_counts_plus_length",
+        "bpe_counts_plus_bigrams_plus_length",
+    ]
+
+    for language, dataset in language_datasets.items():
+        print(f"Running Part 4 feature engineering for {language}...")
+        train_texts = dataset.train.texts
+        dev_texts = dataset.dev.texts
+        test_texts = dataset.test.texts
+        train_labels = dataset.train.labels
+        dev_labels = dataset.dev.labels
+        test_labels = dataset.test.labels
+
+        train_words: list[str] = []
+        for text in train_texts:
+            train_words.extend(text.split())
+
+        for feature_name in feature_sets:
+            print(f"  [Part4] feature_set={feature_name}")
+            best_dev_acc = -1.0
+            best_k = None
+            best_c = None
+
+            
+            # TODO your code here ##
+            # 1) Loop over k_values:
+            #    - Train BPETokenizer on train_words with current k
+            #    - Encode train/dev/test into BPE token docs
+            #    - Build base BPE-count features
+            #    - Conditionally add bigram and/or length feature blocks
+            #      based on feature_name
+            # 2) Loop over c_values:
+            #    - Train LogisticRegression on train features
+            #    - Evaluate on dev
+            #    - Track best (k, C) by dev accuracy
+            # 3) Rebuild best config and evaluate test once
+            # 4) Append ExperimentResult for this feature_name
+            raise NotImplementedError("Implement Part 4 tuning/ablation loop here.")
 
     return results

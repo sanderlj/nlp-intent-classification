@@ -89,3 +89,57 @@ def transform_char_ngram_counts(
             if ngram in vocabulary:
                 x[i, vocabulary[ngram]] += 1
     return x
+
+
+def bpe_token_bigrams(tokens: list[str]) -> list[str]:
+    """Create adjacent bigram features from a BPE token sequence."""
+    
+    bigram_tokens = []
+    for i in range(len(tokens) - 1):
+        bigram_tokens.append(f"{tokens[i]}||{tokens[i+1]}")
+        
+    return bigram_tokens
+
+
+def fit_bpe_bigram_vocabulary(train_docs: Iterable[list[str]]) -> dict[str, int]:
+    """Build a BPE-bigram vocabulary from tokenized training documents only."""
+    
+    vocab: dict[str, int] = {}
+    for doc in train_docs:
+        for bigram in bpe_token_bigrams(doc):
+            if bigram not in vocab:
+                vocab[bigram] = len(vocab)
+    return vocab
+
+
+def transform_bpe_bigram_counts(
+    docs: Iterable[list[str]],
+    vocabulary: dict[str, int],
+) -> np.ndarray:
+    
+    """Transform tokenized docs into BPE-bigram count vectors."""
+    docs = list(docs)
+    x = np.zeros((len(docs), len(vocabulary)), dtype=np.int32)
+    
+    for i, doc in enumerate(docs):
+        for bigram in bpe_token_bigrams(doc):
+            if bigram in vocabulary:
+                x[i, vocabulary[bigram]] += 1
+    return x
+
+def transform_length_structure_features(texts: Iterable[str]) -> np.ndarray:
+    """Create simple length/structure features per utterance.
+
+    Suggested columns:
+    - number of whitespace tokens
+    - number of characters
+    - average token length
+    """
+    ## TODO your code here ##
+    raise NotImplementedError
+
+
+def concatenate_feature_blocks(feature_blocks: list[np.ndarray]) -> np.ndarray:
+    """Concatenate multiple feature matrices column-wise."""
+    ## TODO your code here ##
+    raise NotImplementedError
