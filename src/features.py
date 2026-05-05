@@ -135,11 +135,33 @@ def transform_length_structure_features(texts: Iterable[str]) -> np.ndarray:
     - number of characters
     - average token length
     """
-    ## TODO your code here ##
-    raise NotImplementedError
+    texts = list(texts)
+    length_features = np.zeros((len(texts), 3), dtype=np.float32)
+    
+    for i, text in enumerate(texts):
+        tokens = whitespace_tokenize(text)
+        num_tokens = len(tokens)
+        num_chars = len(text)
+        avg_token_length = num_chars / num_tokens if num_tokens > 0 else 0.0
+        
+        length_features[i, 0] = num_tokens
+        length_features[i, 1] = num_chars
+        length_features[i, 2] = avg_token_length
+    
+    return length_features
 
 
 def concatenate_feature_blocks(feature_blocks: list[np.ndarray]) -> np.ndarray:
     """Concatenate multiple feature matrices column-wise."""
-    ## TODO your code here ##
-    raise NotImplementedError
+    
+    if not feature_blocks:
+        raise ValueError("No feature blocks provided for concatenation.")
+
+    for block in feature_blocks:
+        
+        if not isinstance(block, np.ndarray):
+            raise ValueError("All feature blocks must be numpy arrays.") 
+        if not block.shape[0] == feature_blocks[0].shape[0]:
+            raise ValueError("All feature blocks must have the same number of rows.")   
+        
+    return np.hstack(feature_blocks)
