@@ -6,6 +6,7 @@ This module contains code to run the experiments for Part 1 of the assignment.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -13,6 +14,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 from src.data_utils import LanguageDataset
+from src.evaluation import top_confused_pairs
 from bpe import BPETokenizer
 from nb import MultinomialNaiveBayes
 
@@ -36,6 +38,53 @@ class ExperimentResult:
     test_accuracy: float
     hyperparameters: dict
     notes: str = ""
+
+
+def run_part2_bpe(
+    language_datasets: dict[str, LanguageDataset],
+    bpe_merge_values: list[int],
+    tokenization_dir: Path,
+) -> None:
+    """Part 2: BPE training and tokenization analysis."""
+    from src.reporting import save_tokenization_examples
+
+    for language, dataset in language_datasets.items():
+        print(f"\n[Part 2] Processing language: {language}")
+
+        train_texts = dataset.train.texts
+        word_list: list[str] = []
+        for text in train_texts:
+            word_list.extend(text.split())
+
+        print(f"  Unique words in training set: {len(set(word_list))}")
+
+        tokenizers: dict[int, BPETokenizer] = {}
+        for k in bpe_merge_values:
+            tokenizer = BPETokenizer()
+            tokenizer.train(word_list, num_merges=k)
+            tokenizers[k] = tokenizer
+            print(f"  Trained BPE tokenizer with {k} merges.")
+
+        analysis_k_values = [100, 300, 500]
+        example_rows = []
+        for i, text in enumerate(train_texts[:5]):
+            row: dict[str, str] = {
+                "example_id": f"{language}_train_{i}",
+                "intent": dataset.train.labels[i],
+                "text": text,
+            }
+            for k in analysis_k_values:
+                if k in tokenizers:
+                    row[f"tokens_k{k}"] = " ".join(tokenizers[k].encode(text))
+                else:
+                    row[f"tokens_k{k}"] = ""
+            example_rows.append(row)
+
+        save_tokenization_examples(
+            language=language,
+            examples=example_rows,
+            output_dir=tokenization_dir,
+        )
 
 
 def run_word_unigram(
@@ -70,6 +119,7 @@ def run_word_unigram(
             C=c,
             solver="lbfgs",
             max_iter=2000,
+            random_state=random_seed,
         )
         
         model.fit(x_train, train_labels)
@@ -126,13 +176,13 @@ def run_char_ngram(
         vocab = fit_char_ngram_vocabulary(train_texts, min_n, max_n)
         x_train = transform_char_ngram_counts(train_texts, vocab, min_n, max_n)
         x_dev = transform_char_ngram_counts(dev_texts, vocab, min_n, max_n)
-        x_test = transform_char_ngram_counts(test_texts, vocab, min_n, max_n)
 
         for c in c_values:
             model = LogisticRegression(
                 C=c,
                 solver="lbfgs",
                 max_iter=2000,
+                random_state=random_seed,
             )
 
             model.fit(x_train, train_labels)
@@ -146,7 +196,7 @@ def run_char_ngram(
                 best_c = c
                 best_ngram_range = (min_n, max_n)
                 best_model = model
-                selected_x_test = x_test
+                selected_x_test = transform_char_ngram_counts(test_texts, vocab, min_n, max_n)
 
     if best_model is None or best_c is None or best_ngram_range is None or selected_x_test is None:
         raise ValueError("No model was trained. Check if ngram_ranges or c_values is empty.")
@@ -383,7 +433,7 @@ def run_part4_feature_engineering(
             best_model = LogisticRegression(
                 C=best_c,
                 solver="lbfgs",
-                max_iter=2000,
+                max_iter=5000,
                 random_state=random_seed
             )
             
@@ -406,3 +456,219 @@ def run_part4_feature_engineering(
             ))
 
     return results
+
+def build_part4_feature_names(
+    train_texts: list[str],
+    train_words: list[str],
+    k: int,
+    feature_name: str,
+) -> list[str]:
+    tokenizer = BPETokenizer()
+    tokenizer.train(train_words, k)
+    train_docs = [tokenizer.encode(text) for text in train_texts]
+
+    # Base BPE token names
+    bpe_vocab: dict[str, int] = {}
+    for doc in train_docs:
+        for tok in doc:
+            if tok not in bpe_vocab:
+                bpe_vocab[tok] = len(bpe_vocab)
+    bpe_names = [""] * len(bpe_vocab)
+    for tok, idx in bpe_vocab.items():
+        bpe_names[idx] = f"bpe={tok}"
+
+    names = list(bpe_names)
+
+    # BPE bigram names
+    if feature_name in {"bpe_counts_plus_bigrams", "bpe_counts_plus_bigrams_plus_length"}:
+        bigram_vocab = fit_bpe_bigram_vocabulary(train_docs)
+        bigram_names = [""] * len(bigram_vocab)
+        for bg, idx in bigram_vocab.items():
+            bigram_names[idx] = f"bpe_bigram={bg}"
+        names.extend(bigram_names)
+
+    # Length names
+    if feature_name in {"bpe_counts_plus_length", "bpe_counts_plus_bigrams_plus_length"}:
+        names.extend(["len_num_tokens", "len_num_chars", "len_avg_token_len"])
+
+    return names
+
+def collect_part3_alpha_curve(
+    language_datasets: dict[str, LanguageDataset],
+    fixed_k_by_language: dict[str, int],
+    alpha_values: list[float],
+) -> list[dict]:
+    """Run a targeted dev-only NB pass for alpha-curve plotting.
+
+    Uses fixed k per language and evaluates dev accuracy for each alpha.
+    No test evaluation is performed in this helper.
+    """
+    curve_rows: list[dict] = []
+
+    for language, dataset in language_datasets.items():
+        if language not in fixed_k_by_language:
+            raise ValueError(f"Missing fixed k for language '{language}'.")
+
+        k_value = fixed_k_by_language[language]
+        train_texts = dataset.train.texts
+        train_labels = dataset.train.labels
+        dev_texts = dataset.dev.texts
+        dev_labels = dataset.dev.labels
+
+        train_words: list[str] = []
+        for text in train_texts:
+            train_words.extend(text.split())
+
+        tokenizer = BPETokenizer()
+        tokenizer.train(train_words, k_value)
+        train_docs = [tokenizer.encode(text) for text in train_texts]
+        dev_docs = [tokenizer.encode(text) for text in dev_texts]
+
+        for alpha in alpha_values:
+            model = MultinomialNaiveBayes(alpha=alpha)
+            model.fit(train_docs, train_labels)
+            dev_pred = model.predict(dev_docs)
+            dev_acc = float(accuracy_score(dev_labels, dev_pred))
+
+            curve_rows.append(
+                {
+                    "language": language,
+                    "k": k_value,
+                    "alpha": alpha,
+                    "dev_accuracy": dev_acc,
+                }
+            )
+
+    return curve_rows
+
+def run_error_analysis_for_model(
+    language: str,
+    dataset: LanguageDataset,
+    model_kind: str,
+    config: dict,
+    random_seed: int,
+    top_k_pairs: int = 3,
+    top_n_features: int = 10,
+) -> dict:
+    
+    """Run error analysis for a given model configuration."""
+    train_texts = dataset.train.texts
+    train_labels = dataset.train.labels
+    test_texts = dataset.test.texts
+    test_labels = dataset.test.labels
+    
+    if model_kind == "part1_char_lr":
+        ngram_range = config["ngram_range"]
+        c_value = config["C"]
+        vocab = fit_char_ngram_vocabulary(train_texts, ngram_range[0], ngram_range[1])
+        x_train = transform_char_ngram_counts(train_texts, vocab, ngram_range[0], ngram_range[1])
+        x_test = transform_char_ngram_counts(test_texts, vocab, ngram_range[0], ngram_range[1])
+        
+        model = LogisticRegression(
+            C=c_value,
+            solver="lbfgs",
+            max_iter=5000,
+            random_state=random_seed,
+        )
+        
+        model.fit(x_train, train_labels)
+        y_pred = model.predict(x_test).tolist()
+        test_acc = float(accuracy_score(test_labels, y_pred))
+        
+        feature_names = [""] * len(vocab)
+        for ngram, idx in vocab.items():
+            feature_names[idx] = f"char_ngram={ngram}"
+        
+    elif model_kind == "part4_bpe_lr":
+        k_value = config["k"]
+        c_value = config["C"]
+        feature_name = config["feature_name"]
+        train_words = []
+        for text in train_texts:
+            train_words.extend(text.split())
+        x_train, x_test = build_feature_engineering_matrices(
+            train_texts=train_texts,
+            other_texts=test_texts,
+            train_words=train_words,
+            k=k_value,
+            feature_name=feature_name,
+        )
+        model = LogisticRegression(
+            C=c_value,
+            solver="lbfgs",
+            max_iter=5000,
+            random_state=random_seed,
+        )
+        model.fit(x_train, train_labels)
+        y_pred = model.predict(x_test).tolist()
+        test_acc = float(accuracy_score(test_labels, y_pred))
+        feature_names = build_part4_feature_names(
+            train_texts=train_texts,
+            train_words=train_words,
+            k=k_value,
+            feature_name=feature_name,
+        )
+    else:
+        raise ValueError(f"Unsupported model kind: {model_kind}")
+    
+    pairs = top_confused_pairs(test_labels, y_pred, top_k=top_k_pairs)
+    
+    feature_evidence: dict[str, dict] = {}
+    class_to_idx = {label: i for i, label in enumerate(model.classes_)}
+    
+    for (a, b), _count in pairs:
+        key = f"{a}__{b}"
+        idx_a = class_to_idx[a]
+        idx_b = class_to_idx[b]
+        
+        wa = model.coef_[idx_a]
+        wb = model.coef_[idx_b]
+        
+        top_a_idx = np.argsort(wa)[-top_n_features:][::-1]
+        top_b_idx = np.argsort(wb)[-top_n_features:][::-1]
+        
+        top_a = [{"feature": feature_names[i], "weight": float(wa[i])} for i in top_a_idx]
+        top_b = [{"feature": feature_names[i], "weight": float(wb[i])} for i in top_b_idx]
+
+    
+        set_a = {x["feature"] for x in top_a}
+        set_b = {x["feature"] for x in top_b}
+        overlap = sorted(set_a & set_b)
+
+        feature_evidence[key] = {
+            a: top_a,
+            b: top_b,
+            "overlap_top_features": overlap,
+        }
+    
+    examples_by_pair: dict[str, list[dict[str, str]]] = {}
+    for (a, b), _count in pairs:
+        key = f"{a}__{b}"
+        examples: list[dict[str, str]] = []
+
+        for i, (yt, yp) in enumerate(zip(test_labels, y_pred)):
+            if (yt == a and yp == b) or (yt == b and yp == a):
+                examples.append(
+                    {
+                        "true": yt,
+                        "pred": yp,
+                        "text": test_texts[i],
+                    }
+                )
+            if len(examples) >= 3:
+                break
+
+        examples_by_pair[key] = examples
+
+    return {
+        "language": language,
+        "model_kind": model_kind,
+        "config": config,
+        "test_accuracy": test_acc,
+        "top_confused_pairs": pairs,
+        "examples": examples_by_pair,
+        "feature_evidence": feature_evidence,
+    }
+    
+    
+
