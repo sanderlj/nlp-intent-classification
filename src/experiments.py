@@ -491,6 +491,10 @@ def run_error_analysis_for_model(
         y_pred = model.predict(x_test).tolist()
         test_acc = float(accuracy_score(test_labels, y_pred))
         
+        feature_names = [""] * len(vocab)
+        for ngram, idx in vocab.items():
+            feature_names[idx] = f"char_ngram={ngram}"
+        
     elif model_kind == "part4_bpe_lr":
         k_value = config["k"]
         c_value = config["C"]
@@ -519,6 +523,35 @@ def run_error_analysis_for_model(
     
     pairs = top_confused_pairs(test_labels, y_pred, top_k=top_k_pairs)
     
+    feature_evidence: dict[str, dict[str, list[dict[str, float]]]] = {}
+    if model_kind == "part1_char_lr":
+        class_to_idx = {label: i for i, label in enumerate(model.classes_)}
+        
+        for (a, b), _count in pairs:
+            key = f"{a}__{b}"
+            idx_a = class_to_idx[a]
+            idx_b = class_to_idx[b]
+            
+            wa = model.coef_[idx_a]
+            wb = model.coef_[idx_b]
+            
+            top_a_idx = np.argsort(wa)[-15:][::-1]
+            top_b_idx = np.argsort(wb)[-15:][::-1]
+            
+            top_a = [{"feature": feature_names[i], "weight": float(wa[i])} for i in top_a_idx]
+            top_b = [{"feature": feature_names[i], "weight": float(wb[i])} for i in top_b_idx]
+
+        
+            set_a = {x["feature"] for x in top_a}
+            set_b = {x["feature"] for x in top_b}
+            overlap = sorted(set_a & set_b)
+
+            feature_evidence[key] = {
+                a: top_a,
+                b: top_b,
+                "overlap_top_features": overlap,
+            }
+    
     examples_by_pair: dict[str, list[dict[str, str]]] = {}
     for (a, b), _count in pairs:
         key = f"{a}__{b}"
@@ -545,6 +578,7 @@ def run_error_analysis_for_model(
         "test_accuracy": test_acc,
         "top_confused_pairs": pairs,
         "examples": examples_by_pair,
+        "feature_evidence": feature_evidence,
     }
     
     
