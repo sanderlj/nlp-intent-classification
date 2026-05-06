@@ -127,7 +127,6 @@ def run_char_ngram(
         vocab = fit_char_ngram_vocabulary(train_texts, min_n, max_n)
         x_train = transform_char_ngram_counts(train_texts, vocab, min_n, max_n)
         x_dev = transform_char_ngram_counts(dev_texts, vocab, min_n, max_n)
-        x_test = transform_char_ngram_counts(test_texts, vocab, min_n, max_n)
 
         for c in c_values:
             model = LogisticRegression(
@@ -148,7 +147,7 @@ def run_char_ngram(
                 best_c = c
                 best_ngram_range = (min_n, max_n)
                 best_model = model
-                selected_x_test = x_test
+                selected_x_test = transform_char_ngram_counts(test_texts, vocab, min_n, max_n)
 
     if best_model is None or best_c is None or best_ngram_range is None or selected_x_test is None:
         raise ValueError("No model was trained. Check if ngram_ranges or c_values is empty.")
