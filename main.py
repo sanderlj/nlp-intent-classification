@@ -12,12 +12,13 @@ from src.config import (
     RANDOM_SEED,
     RAW_DATA_DIR,
     TOKENIZATION_DIR,
+    ERROR_ANALYSIS_DIR,
     ensure_directories,
 )
 from bpe import BPETokenizer
 from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.reporting import save_results_csv, save_tokenization_examples
-from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering
+from src.reporting import save_results_csv, save_tokenization_examples, save_error_analysis_json
+from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering, run_error_analysis_for_model
 
 
 def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
@@ -123,6 +124,24 @@ def main() -> None:
         )
         save_results_csv(part4_results, METRICS_DIR / "part4_results.csv")
 
-
+        print("\nRunning Error Analysis for best models per language...")
+        
+        amh_error_analysis = run_error_analysis_for_model(
+            language="amh",
+            dataset=language_datasets["amh"],
+            model_kind="part4_bpe_lr",
+            config={"k": 100, "C": 0.5, "feature_name": "bpe_counts_plus_bigrams_plus_length"},
+            random_seed=RANDOM_SEED,
+        )
+        
+        zul_error_analysis = run_error_analysis_for_model(
+            language="zul",
+            dataset=language_datasets["zul"],
+            model_kind="part1_char_lr",
+            config={"ngram_range": (3, 5), "C": 5.0},
+            random_seed=RANDOM_SEED,
+        )
+        save_error_analysis_json("amh", amh_error_analysis, ERROR_ANALYSIS_DIR)
+        save_error_analysis_json("zul", zul_error_analysis, ERROR_ANALYSIS_DIR)   
 if __name__ == "__main__":
     main()

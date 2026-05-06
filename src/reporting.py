@@ -2,6 +2,7 @@
 
 from pathlib import Path
 import csv
+import json
 from src.experiments import ExperimentResult
 
 def save_results_csv(results: list[ExperimentResult], output_path: Path) -> None:
@@ -55,4 +56,12 @@ def save_tokenization_examples(language: str, examples: list[dict[str, str]], ou
                     "tokens_k500": fmt_tokens(example.get("tokens_k500", "")),
                 }
             )
-            
+
+
+def save_error_analysis_json(language: str, analysis: dict, output_dir: Path) -> Path:
+    """Save one language's error-analysis artifact as JSON."""
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / f"{language}_error_analysis.json"
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(analysis, f, ensure_ascii=False, indent=2)
+    return output_path

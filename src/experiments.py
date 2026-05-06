@@ -13,6 +13,7 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 
 from src.data_utils import LanguageDataset
+from src.evaluation import top_confused_pairs
 from bpe import BPETokenizer
 from nb import MultinomialNaiveBayes
 
@@ -407,3 +408,95 @@ def run_part4_feature_engineering(
             ))
 
     return results
+
+def run_error_analysis_for_model(
+    language: str,
+    dataset: LanguageDataset,
+    model_kind: str,
+    config: dict,
+    random_seed: int,
+    top_k_pairs: int = 3,
+) -> dict:
+    
+    """Run error analysis for a given model configuration."""
+    train_texts = dataset.train.texts
+    train_labels = dataset.train.labels
+    test_texts = dataset.test.texts
+    test_labels = dataset.test.labels
+    
+    if model_kind == "part1_char_lr":
+        ngram_range = config["ngram_range"]
+        c_value = config["C"]
+        vocab = fit_char_ngram_vocabulary(train_texts, ngram_range[0], ngram_range[1])
+        x_train = transform_char_ngram_counts(train_texts, vocab, ngram_range[0], ngram_range[1])
+        x_test = transform_char_ngram_counts(test_texts, vocab, ngram_range[0], ngram_range[1])
+        
+        model = LogisticRegression(
+            C=c_value,
+            solver="lbfgs",
+            max_iter=5000,
+            random_state=random_seed,
+        )
+        
+        model.fit(x_train, train_labels)
+        y_pred = model.predict(x_test).tolist()
+        test_acc = float(accuracy_score(test_labels, y_pred))
+        
+    elif model_kind == "part4_bpe_lr":
+        k_value = config["k"]
+        c_value = config["C"]
+        feature_name = config["feature_name"]
+        train_words = []
+        for text in train_texts:
+            train_words.extend(text.split())
+        x_train, x_test = build_feature_engineering_matrices(
+            train_texts=train_texts,
+            other_texts=test_texts,
+            train_words=train_words,
+            k=k_value,
+            feature_name=feature_name,
+        )
+        model = LogisticRegression(
+            C=c_value,
+            solver="lbfgs",
+            max_iter=5000,
+            random_state=random_seed,
+        )
+        model.fit(x_train, train_labels)
+        y_pred = model.predict(x_test).tolist()
+        test_acc = float(accuracy_score(test_labels, y_pred))
+    else:
+        raise ValueError(f"Unsupported model kind: {model_kind}")
+    
+    pairs = top_confused_pairs(test_labels, y_pred, top_k=top_k_pairs)
+    
+    examples_by_pair: dict[str, list[dict[str, str]]] = {}
+    for (a, b), _count in pairs:
+        key = f"{a}__{b}"
+        examples: list[dict[str, str]] = []
+
+        for i, (yt, yp) in enumerate(zip(test_labels, y_pred)):
+            if (yt == a and yp == b) or (yt == b and yp == a):
+                examples.append(
+                    {
+                        "true": yt,
+                        "pred": yp,
+                        "text": test_texts[i],
+                    }
+                )
+            if len(examples) >= 3:
+                break
+
+        examples_by_pair[key] = examples
+
+    return {
+        "language": language,
+        "model_kind": model_kind,
+        "config": config,
+        "test_accuracy": test_acc,
+        "top_confused_pairs": pairs,
+        "examples": examples_by_pair,
+    }
+    
+    
+
