@@ -409,6 +409,41 @@ def run_part4_feature_engineering(
 
     return results
 
+def build_part4_feature_names(
+    train_texts: list[str],
+    train_words: list[str],
+    k: int,
+    feature_name: str,
+) -> list[str]:
+    tokenizer = BPETokenizer()
+    tokenizer.train(train_words, k)
+    train_docs = [tokenizer.encode(text) for text in train_texts]
+
+    # Base BPE token names
+    bpe_vocab: dict[str, int] = {}
+    for doc in train_docs:
+        for tok in doc:
+            if tok not in bpe_vocab:
+                bpe_vocab[tok] = len(bpe_vocab)
+    bpe_names = [""] * len(bpe_vocab)
+    for tok, idx in bpe_vocab.items():
+        bpe_names[idx] = f"bpe={tok}"
+
+    names = list(bpe_names)
+
+    # BPE bigram names
+    if feature_name in {"bpe_counts_plus_bigrams", "bpe_counts_plus_bigrams_plus_length"}:
+        bigram_vocab = fit_bpe_bigram_vocabulary(train_docs)
+        bigram_names = [""] * len(bigram_vocab)
+        for bg, idx in bigram_vocab.items():
+            bigram_names[idx] = f"bpe_bigram={bg}"
+        names.extend(bigram_names)
+
+    # Length names
+    if feature_name in {"bpe_counts_plus_length", "bpe_counts_plus_bigrams_plus_length"}:
+        names.extend(["len_num_tokens", "len_num_chars", "len_avg_token_len"])
+
+    return names
 
 def collect_part3_alpha_curve(
     language_datasets: dict[str, LanguageDataset],
@@ -465,6 +500,7 @@ def run_error_analysis_for_model(
     config: dict,
     random_seed: int,
     top_k_pairs: int = 3,
+    top_n_features: int = 10,
 ) -> dict:
     
     """Run error analysis for a given model configuration."""
@@ -518,39 +554,44 @@ def run_error_analysis_for_model(
         model.fit(x_train, train_labels)
         y_pred = model.predict(x_test).tolist()
         test_acc = float(accuracy_score(test_labels, y_pred))
+        feature_names = build_part4_feature_names(
+            train_texts=train_texts,
+            train_words=train_words,
+            k=k_value,
+            feature_name=feature_name,
+        )
     else:
         raise ValueError(f"Unsupported model kind: {model_kind}")
     
     pairs = top_confused_pairs(test_labels, y_pred, top_k=top_k_pairs)
     
-    feature_evidence: dict[str, dict[str, list[dict[str, float]]]] = {}
-    if model_kind == "part1_char_lr":
-        class_to_idx = {label: i for i, label in enumerate(model.classes_)}
+    feature_evidence: dict[str, dict] = {}
+    class_to_idx = {label: i for i, label in enumerate(model.classes_)}
+    
+    for (a, b), _count in pairs:
+        key = f"{a}__{b}"
+        idx_a = class_to_idx[a]
+        idx_b = class_to_idx[b]
         
-        for (a, b), _count in pairs:
-            key = f"{a}__{b}"
-            idx_a = class_to_idx[a]
-            idx_b = class_to_idx[b]
-            
-            wa = model.coef_[idx_a]
-            wb = model.coef_[idx_b]
-            
-            top_a_idx = np.argsort(wa)[-15:][::-1]
-            top_b_idx = np.argsort(wb)[-15:][::-1]
-            
-            top_a = [{"feature": feature_names[i], "weight": float(wa[i])} for i in top_a_idx]
-            top_b = [{"feature": feature_names[i], "weight": float(wb[i])} for i in top_b_idx]
-
+        wa = model.coef_[idx_a]
+        wb = model.coef_[idx_b]
         
-            set_a = {x["feature"] for x in top_a}
-            set_b = {x["feature"] for x in top_b}
-            overlap = sorted(set_a & set_b)
+        top_a_idx = np.argsort(wa)[-top_n_features:][::-1]
+        top_b_idx = np.argsort(wb)[-top_n_features:][::-1]
+        
+        top_a = [{"feature": feature_names[i], "weight": float(wa[i])} for i in top_a_idx]
+        top_b = [{"feature": feature_names[i], "weight": float(wb[i])} for i in top_b_idx]
 
-            feature_evidence[key] = {
-                a: top_a,
-                b: top_b,
-                "overlap_top_features": overlap,
-            }
+    
+        set_a = {x["feature"] for x in top_a}
+        set_b = {x["feature"] for x in top_b}
+        overlap = sorted(set_a & set_b)
+
+        feature_evidence[key] = {
+            a: top_a,
+            b: top_b,
+            "overlap_top_features": overlap,
+        }
     
     examples_by_pair: dict[str, list[dict[str, str]]] = {}
     for (a, b), _count in pairs:
