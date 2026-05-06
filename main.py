@@ -11,11 +11,12 @@ from src.config import (
     LR_C_VALUES,
     RANDOM_SEED,
     RAW_DATA_DIR,
+    TOKENIZATION_DIR,
     ensure_directories,
 )
 from bpe import BPETokenizer
 from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.reporting import save_results_csv
+from src.reporting import save_results_csv, save_tokenization_examples
 from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering
 
 
@@ -43,20 +44,25 @@ def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
             
         # Analyze tokenizations for a few example utterances at k = 100, 300, 500.
         analysis_k_values = [100, 300, 500]  
+        example_rows = []
         
-        for k in analysis_k_values:
-            print(f"  Example tokenization with k={k}:")
-            tokenizer = tokenizers[k]
-            for i, text in enumerate(train_texts[:5]):
-                tokens = tokenizer.encode(text)
-                print(f"    Utterance {i}: {tokens}")
+        for i, text in enumerate(train_texts[:5]):
+            row = {
+                "example_id": f"{language}_train_{i}",
+                "intent": dataset.train.labels[i],
+                "text": text,
+            }
+            for k in analysis_k_values:
+                tokenizer = tokenizers[k]
+                row[f"tokens_k{k}"] = tokenizer.encode(text)
+            
+            example_rows.append(row)
         
-        
-        # Optionally save these outputs to outputs/tokenization_examples/
-        # so they can be copied into the report.
-        #
-        # If this function will be reused in Part 3/4, return tokenizers or
-        # a mapping {language: {k: tokenizer}} instead of printing only.
+        save_tokenization_examples(
+            language=language,
+            examples=example_rows,
+            output_dir=TOKENIZATION_DIR,
+        )
 
 
 def main() -> None:
