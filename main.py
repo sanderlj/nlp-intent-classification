@@ -16,55 +16,16 @@ from src.config import (
     PLOTS_DIR,
     ensure_directories,
 )
-from bpe import BPETokenizer
-from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.reporting import save_results_csv, save_tokenization_examples, save_error_analysis_json, save_part3_alpha_curve_plot
-from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering, run_error_analysis_for_model, collect_part3_alpha_curve
-
-
-def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
-    """Part 2: BPE training and tokenization analysis."""
-    
-    for language, dataset in language_datasets.items():
-        print(f"\n[Part 2] Processing language: {language}")
-        
-        # Build word list from training texts.
-        train_texts = dataset.train.texts
-        word_list = []
-        for text in train_texts:
-            word_list.extend(text.split())
-        
-        print(f"  Unique words in training set: {len(set(word_list))}")
-        
-        # Train separate BPETokenizer for each k in BPE_MERGE_VALUES.
-        tokenizers = {}
-        for k in BPE_MERGE_VALUES:
-            tokenizer = BPETokenizer()
-            tokenizer.train(word_list, num_merges=k)
-            tokenizers[k] = tokenizer
-            print(f"  Trained BPE tokenizer with {k} merges.")
-            
-        # Analyze tokenizations for a few example utterances at k = 100, 300, 500.
-        analysis_k_values = [100, 300, 500]  
-        example_rows = []
-        
-        for i, text in enumerate(train_texts[:5]):
-            row = {
-                "example_id": f"{language}_train_{i}",
-                "intent": dataset.train.labels[i],
-                "text": text,
-            }
-            for k in analysis_k_values:
-                tokenizer = tokenizers[k]
-                row[f"tokens_k{k}"] = tokenizer.encode(text)
-            
-            example_rows.append(row)
-        
-        save_tokenization_examples(
-            language=language,
-            examples=example_rows,
-            output_dir=TOKENIZATION_DIR,
-        )
+from src.data_utils import load_language_dataset, summarize_dataset
+from src.reporting import save_results_csv, save_error_analysis_json, save_part3_alpha_curve_plot
+from src.experiments import (
+    run_part1_baselines,
+    run_part2_bpe,
+    run_part3_nb,
+    run_part4_feature_engineering,
+    run_error_analysis_for_model,
+    collect_part3_alpha_curve,
+)
 
 
 def main() -> None:
@@ -104,7 +65,11 @@ def main() -> None:
             )
 
         print("\nRunning Part 2 BPE...")
-        run_part2_bpe(language_datasets)
+        run_part2_bpe(
+            language_datasets=language_datasets,
+            bpe_merge_values=BPE_MERGE_VALUES,
+            tokenization_dir=TOKENIZATION_DIR,
+        )
         
         print("\nRunning Part 3 NB...")
         part3_results = run_part3_nb(

@@ -6,6 +6,7 @@ This module contains code to run the experiments for Part 1 of the assignment.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
@@ -37,6 +38,53 @@ class ExperimentResult:
     test_accuracy: float
     hyperparameters: dict
     notes: str = ""
+
+
+def run_part2_bpe(
+    language_datasets: dict[str, LanguageDataset],
+    bpe_merge_values: list[int],
+    tokenization_dir: Path,
+) -> None:
+    """Part 2: BPE training and tokenization analysis."""
+    from src.reporting import save_tokenization_examples
+
+    for language, dataset in language_datasets.items():
+        print(f"\n[Part 2] Processing language: {language}")
+
+        train_texts = dataset.train.texts
+        word_list: list[str] = []
+        for text in train_texts:
+            word_list.extend(text.split())
+
+        print(f"  Unique words in training set: {len(set(word_list))}")
+
+        tokenizers: dict[int, BPETokenizer] = {}
+        for k in bpe_merge_values:
+            tokenizer = BPETokenizer()
+            tokenizer.train(word_list, num_merges=k)
+            tokenizers[k] = tokenizer
+            print(f"  Trained BPE tokenizer with {k} merges.")
+
+        analysis_k_values = [100, 300, 500]
+        example_rows = []
+        for i, text in enumerate(train_texts[:5]):
+            row: dict[str, str] = {
+                "example_id": f"{language}_train_{i}",
+                "intent": dataset.train.labels[i],
+                "text": text,
+            }
+            for k in analysis_k_values:
+                if k in tokenizers:
+                    row[f"tokens_k{k}"] = " ".join(tokenizers[k].encode(text))
+                else:
+                    row[f"tokens_k{k}"] = ""
+            example_rows.append(row)
+
+        save_tokenization_examples(
+            language=language,
+            examples=example_rows,
+            output_dir=tokenization_dir,
+        )
 
 
 def run_word_unigram(
