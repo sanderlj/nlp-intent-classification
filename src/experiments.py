@@ -409,6 +409,55 @@ def run_part4_feature_engineering(
 
     return results
 
+
+def collect_part3_alpha_curve(
+    language_datasets: dict[str, LanguageDataset],
+    fixed_k_by_language: dict[str, int],
+    alpha_values: list[float],
+) -> list[dict]:
+    """Run a targeted dev-only NB pass for alpha-curve plotting.
+
+    Uses fixed k per language and evaluates dev accuracy for each alpha.
+    No test evaluation is performed in this helper.
+    """
+    curve_rows: list[dict] = []
+
+    for language, dataset in language_datasets.items():
+        if language not in fixed_k_by_language:
+            raise ValueError(f"Missing fixed k for language '{language}'.")
+
+        k_value = fixed_k_by_language[language]
+        train_texts = dataset.train.texts
+        train_labels = dataset.train.labels
+        dev_texts = dataset.dev.texts
+        dev_labels = dataset.dev.labels
+
+        train_words: list[str] = []
+        for text in train_texts:
+            train_words.extend(text.split())
+
+        tokenizer = BPETokenizer()
+        tokenizer.train(train_words, k_value)
+        train_docs = [tokenizer.encode(text) for text in train_texts]
+        dev_docs = [tokenizer.encode(text) for text in dev_texts]
+
+        for alpha in alpha_values:
+            model = MultinomialNaiveBayes(alpha=alpha)
+            model.fit(train_docs, train_labels)
+            dev_pred = model.predict(dev_docs)
+            dev_acc = float(accuracy_score(dev_labels, dev_pred))
+
+            curve_rows.append(
+                {
+                    "language": language,
+                    "k": k_value,
+                    "alpha": alpha,
+                    "dev_accuracy": dev_acc,
+                }
+            )
+
+    return curve_rows
+
 def run_error_analysis_for_model(
     language: str,
     dataset: LanguageDataset,

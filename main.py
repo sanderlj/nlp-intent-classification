@@ -13,12 +13,13 @@ from src.config import (
     RAW_DATA_DIR,
     TOKENIZATION_DIR,
     ERROR_ANALYSIS_DIR,
+    PLOTS_DIR,
     ensure_directories,
 )
 from bpe import BPETokenizer
 from src.data_utils import LanguageDataset, load_language_dataset, summarize_dataset
-from src.reporting import save_results_csv, save_tokenization_examples, save_error_analysis_json
-from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering, run_error_analysis_for_model
+from src.reporting import save_results_csv, save_tokenization_examples, save_error_analysis_json, save_part3_alpha_curve_plot
+from src.experiments import run_part1_baselines, run_part3_nb, run_part4_feature_engineering, run_error_analysis_for_model, collect_part3_alpha_curve
 
 
 def run_part2_bpe(language_datasets: dict[str, LanguageDataset]) -> None:
@@ -114,7 +115,12 @@ def main() -> None:
         )
         save_results_csv(part3_results, METRICS_DIR / "part3_nb_results.csv")
         
-        
+        curve_rows = collect_part3_alpha_curve(
+            language_datasets=language_datasets,
+            fixed_k_by_language={"amh": 100, "zul": 750},
+            alpha_values=NB_ALPHA_VALUES,
+        )
+        save_part3_alpha_curve_plot(curve_rows, PLOTS_DIR / "part3_alpha_curve.png")
         print("\nRunning Part 4 Feature Engineering...")
         part4_results = run_part4_feature_engineering(
             language_datasets,
