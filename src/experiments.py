@@ -70,6 +70,7 @@ def run_word_unigram(
             C=c,
             solver="lbfgs",
             max_iter=2000,
+            random_state=random_seed,
         )
         
         model.fit(x_train, train_labels)
@@ -133,6 +134,7 @@ def run_char_ngram(
                 C=c,
                 solver="lbfgs",
                 max_iter=2000,
+                random_state=random_seed,
             )
 
             model.fit(x_train, train_labels)
@@ -383,7 +385,7 @@ def run_part4_feature_engineering(
             best_model = LogisticRegression(
                 C=best_c,
                 solver="lbfgs",
-                max_iter=2000,
+                max_iter=5000,
                 random_state=random_seed
             )
             
